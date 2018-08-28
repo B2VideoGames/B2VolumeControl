@@ -9,8 +9,6 @@ require "graphics"
 --
 --   ** This script will allow you to adjust the X-Plane11 sound sliders without going
 --          into the settings menu and without needing to pause the simulator.  
---   ** To customize the location of the widget for your personal use, you may easily
---          do so in the B2VolumeControl_LocationInitialization() function below
 --
 --   To activate :: move your mouse to upper right corner of the screen
 --                      and click on the magically appearing 'sound icon'
@@ -25,7 +23,7 @@ require "graphics"
 --
 --   Initial version:   Aug 2018    B2_
 --
--- Copyright 2018 'b2videogames at gmail dot com'
+-- Copyright 2018 B2videogames@gmail.com
 --  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
 --  associated documentation files (the "Software"), to deal in the Software without restriction,
 --  including without limitation the rights to use, copy, modify, merge, publish, distribute,
@@ -44,7 +42,6 @@ require "graphics"
 local b2vc_SoftwareVersion = 2
 local b2vc_FileFormat = 1
 
-
 dataref("b2vc_mastervolume", "sim/operation/sound/master_volume_ratio", "writable")
 dataref("b2vc_exteriorVolume", "sim/operation/sound/exterior_volume_ratio", "writable")
 dataref("b2vc_interiorVolume", "sim/operation/sound/interior_volume_ratio", "writable")
@@ -52,43 +49,47 @@ dataref("b2vc_copilotVolume", "sim/operation/sound/copilot_volume_ratio", "writa
 dataref("b2vc_radioVolume", "sim/operation/sound/radio_volume_ratio", "writable")
 dataref("b2vc_enviroVolume", "sim/operation/sound/enviro_volume_ratio", "writable")
 dataref("b2vc_uiVolume", "sim/operation/sound/ui_volume_ratio", "writable")
-
 dataref("b2vc_viewExternal", "sim/graphics/view/view_is_external")
 
+local snapMainX = SCREEN_WIDTH - 10
+local snapMainY = SCREEN_HIGHT - 40
+local mainX = snapMainX
+local mainY = snapMainY
 
-local mainX = SCREEN_WIDTH - 10  -- default position, to change use B2VolumeControl_LocationInitialization()
-local mainY = SCREEN_HIGHT - 40  -- default position, to change use B2VolumeControl_LocationInitialization()
+-- -- -- -- --  a bunch of local variables
 local prevX = mainX
 local prevY = mainY
 local prevView = b2vc_viewExternal
 local bDrawControlBox = false
 local bScreenSizeChanged = true
 local bFirstDraw = true
-local bSaveRequired = false
+local bSaveRequired = true
 local knobRadius = 20
-local fixedGap = 5
-local topBoxY = mainY - (4*fixedGap)
+local knobDiameter = knobRadius*2
+local gapFive = 5
 local fixedTextSpace = 60
 local bDragging = false
 local bAutoPosition = true
 local initialTest = 1
+local knobSingleMark = -1   -- no interior/exterior separation
+local knobFailedTest = -2   -- 'failed' set test
+local i  -- just for local iterations
 
--- knobs[knobX,knobY,nameOfKnob,textX,knobInt,knobExt]
+-- knobs[knobX,knobY,knobName,knobTextX,knobInt,knobExt]
 local numKnobs = 7  -- total count of Volume datarefs
 local knobX = 1
 local knobY = 2
 local knobName = 3
 local knobTextX = 4
-local knobInt = 5   -- Volume used for both if knobExt -1
-local knobExt = 6   -- value of -2 is 'failed' set test
-local knobs = { {0, 0, "master",   0, b2vc_mastervolume,   -1},
-                {0, 0, "exterior", 0, b2vc_exteriorVolume, -1},
-                {0, 0, "interior", 0, b2vc_interiorVolume, -1},
-                {0, 0, "copilot",  0, b2vc_copilotVolume,  -1},
-                {0, 0, "radio",    0, b2vc_radioVolume,    -1},
-                {0, 0, "enviro",   0, b2vc_enviroVolume,   -1},
-                {0, 0, "ui",       0, b2vc_uiVolume,       -1} }
-local i  -- just for local iterations
+local knobInt = 5   -- Volume used for both if knobExt = knobSingleMark
+local knobExt = 6   -- volume or knobFailedTest or knobSingleMark
+local knobs = { {0, 0, "master",   0, b2vc_mastervolume,   knobSingleMark},
+                {0, 0, "exterior", 0, b2vc_exteriorVolume, knobSingleMark},
+                {0, 0, "interior", 0, b2vc_interiorVolume, knobSingleMark},
+                {0, 0, "copilot",  0, b2vc_copilotVolume,  knobSingleMark},
+                {0, 0, "radio",    0, b2vc_radioVolume,    knobSingleMark},
+                {0, 0, "enviro",   0, b2vc_enviroVolume,   knobSingleMark},
+                {0, 0, "ui",       0, b2vc_uiVolume,       knobSingleMark} }
 
 do_often("B2VolumeControl_everySec()")
 do_every_draw("B2VolumeControl_everyDraw()")
@@ -96,43 +97,44 @@ do_every_frame("B2VolumeControl_everyFrame()")
 do_on_mouse_click("B2VolumeControl_mouseClick()")
 do_on_mouse_wheel("B2VolumeControl_onMouseWheel()")
 
--- **************************************************************************************
---   To customize the location of the widget, simply modify the mainX and mainY coordinates here
---   as all other values are based on that location.
---       (mainX,mainY) is the coordinate of a pixel which is located at the middle, right most
---                     position of the 'active sound icon'
---
---   note: positions relative to the bottom or left edge of screen should be a 'fixed' value
---   note: positions relative to the top or right edge of screen should be a 'variable' value
---   example:   (125,SCREEN_HIGHT-40) would be positioned 125 pixels to the right of the left edge
---              and SCREEN_HIGHT-40 pixels from the top edge :: as the screen gets taller/shorter,
---              the value of SCREEN_HIGHT will change, keeping the widget where you wanted it
---
---      x ::  0 is left edge of screen, SCREEN_WIDTH is right edge of screen
---      y ::  0 is bottom edge of screen, SCREEN_HIGHT is top edge of screen
---          
---      default: 10 pixels from right edge of screen, 40 pixels from top edge of screen
--- **************************************************************************************
-function B2VolumeControl_LocationInitialization()
-    mainX = SCREEN_WIDTH - 10
-    mainY = SCREEN_HIGHT - 40
-end
-
 function B2VolumeControl_everySec()
+    if not(snapMainX == (SCREEN_WIDTH - 10)) then
+        bScreenSizeChanged = true
+        snapMainX = SCREEN_WIDTH - 10
+    end
+    if not(snapMainY == (SCREEN_HIGHT - 40)) then
+        bScreenSizeChanged = true
+        snapMainY = SCREEN_HIGHT - 40
+    end
+
     if (bAutoPosition == true) then
         -- handle screen width changes
-        local prevmainX = mainX
-        local prevmainY = mainY
-        B2VolumeControl_LocationInitialization()
-        if (not(prevmainX == mainX and prevmainY == mainY)) then
-            bScreenSizeChanged = true
+        if (bScreenSizeChanged) then
+            mainX = snapMainX
+            mainY = snapMainY
+        end
+    else -- manual position
+        -- make sure we aren't drawing off the screen
+        -- X:: from mainX-knobDiameter-fixedTextSpace to mainX
+        -- Y:: from mainY-(4*gapFive)-(numKnobs*knobDiameter)-(numKnobs*gapFive) to mainY+15
+        if ((mainX-knobDiameter-fixedTextSpace) < 0) then
+            mainX = knobDiameter+fixedTextSpace
+        elseif (mainX > SCREEN_WIDTH) then 
+            mainX = SCREEN_WIDTH
+        end
+        if (mainY-(4*gapFive)-(numKnobs*knobDiameter)-(numKnobs*gapFive) < 0) then
+            mainY = (4*gapFive)+(numKnobs*knobDiameter)+(numKnobs*gapFive)
+        elseif ((mainY+15) > SCREEN_HIGHT) then
+            mainY = SCREEN_HIGHT - 15
         end
     end
 end
 
 function B2VolumeControl_everyFrame()
-    -- USE THIS ROUTINE SPARINGLY
-    local testValue = 0.03125 -- a good 'binary' random number
+    -- going to do a quick test to see if we are allowed to change the value of
+    -- the volume sliders or not, then read any previous config files
+
+    local testValue = 0.03125 -- a good 'binary' random number to prevent float issues
     if (initialTest == 1) then                                  -- stage 1 of test
         for i = 1,numKnobs do
             knobs[i][knobExt] = B2VolumeControl_GetVolume(i)    -- store original Value 
@@ -144,9 +146,9 @@ function B2VolumeControl_everyFrame()
         for i = 1,numKnobs do
             local testResult = B2VolumeControl_GetVolume(i)
             if (testResult == testValue) then                   -- check against test number
-                testResult = -1                                 -- test passed
+                testResult = knobSingleMark                     -- test passed
             else
-                testResult = -2                                 -- test Failed
+                testResult = knobFailedTest                     -- test Failed
             end
             B2VolumeControl_SetVolume(i,knobs[i][knobExt])      -- return to original value
             knobs[i][knobExt] = testResult
@@ -157,6 +159,8 @@ function B2VolumeControl_everyFrame()
         initialTest = 0                                         -- done startup initialization
     end
 
+    -- if/when the view is swapped from interior/exterior (or vice versa) 
+    -- we need to handle the active dial swaps
     if not(prevView == b2vc_viewExternal) then --internal/external view swap, change volumes if necessary
         for i = 1,numKnobs do
             if (knobs[i][knobExt] >= 0) then
@@ -192,9 +196,9 @@ function B2VolumeControl_everyDraw()
         if (bDrawControlBox == true) then
             -- draw 'drag' wheel
             graphics.set_color(1,1,1,0.5) -- white border
-            graphics.draw_filled_circle(mainX-85,mainY,5)
+            graphics.draw_filled_circle(mainX-95,mainY,5)
             graphics.set_color(140/255,128/255,99/255,0.8) -- fill in color
-            graphics.draw_filled_circle(mainX-85,mainY,4)
+            graphics.draw_filled_circle(mainX-95,mainY,4)
 
             -- draw 'save' icon
             if (bSaveRequired == true) then
@@ -202,15 +206,15 @@ function B2VolumeControl_everyDraw()
             else
                 graphics.set_color(0,1,0,0.5) -- green border
             end
-            graphics.draw_triangle(mainX-60,mainY-3,mainX-67,mainY+7,mainX-53,mainY+7)
-            graphics.draw_line(mainX-69,mainY-1,mainX-69,mainY-9)
-            graphics.draw_line(mainX-69,mainY-9,mainX-51,mainY-9)
-            graphics.draw_line(mainX-51,mainY-9,mainX-51,mainY-1)
+            graphics.draw_triangle(mainX-65,mainY-3,mainX-72,mainY+7,mainX-58,mainY+7)
+            graphics.draw_line(mainX-74,mainY-1,mainX-74,mainY-9)
+            graphics.draw_line(mainX-74,mainY-9,mainX-56,mainY-9)
+            graphics.draw_line(mainX-56,mainY-9,mainX-56,mainY-1)
             graphics.set_color(0,0,0,0.5) -- fill in color
-            graphics.draw_triangle(mainX-60,mainY,mainX-65,mainY+6,mainX-55,mainY+6)
-            graphics.draw_line(mainX-68,mainY-1,mainX-68,mainY-8)
-            graphics.draw_line(mainX-68,mainY-8,mainX-52,mainY-8)
-            graphics.draw_line(mainX-52,mainY-8,mainX-52,mainY-1)
+            graphics.draw_triangle(mainX-65,mainY,mainX-70,mainY+6,mainX-60,mainY+6)
+            graphics.draw_line(mainX-73,mainY-1,mainX-73,mainY-8)
+            graphics.draw_line(mainX-73,mainY-8,mainX-57,mainY-8)
+            graphics.draw_line(mainX-57,mainY-8,mainX-57,mainY-1)
 
             -- draw 'active' sound icon
             graphics.set_color(140/255,128/255,99/255,1) -- fill in color
@@ -223,18 +227,24 @@ function B2VolumeControl_everyDraw()
             graphics.draw_line(mainX-15,mainY-5,mainX-4,mainY-10)
 
             -- recompute workspace / knobs if needed
+            local topBoxY = mainY - (4*gapFive)
+
             if (bScreenSizeChanged == true) then
-                topBoxY = mainY - (4*fixedGap)
-                B2VolumeControl_computeKnobLocation()
+                local y = topBoxY - knobRadius
+                local textX = mainX - knobDiameter - fixedTextSpace + 3   -- the '+3' just makes it look nicer
+                for i = 1,numKnobs do
+                    knobs[i][knobX] = mainX - knobRadius - 2                -- '-2' just to look nicer
+                    knobs[i][knobY] = y - 1                                 -- '-1' just to look nicer
+                    knobs[i][knobTextX] = textX
+                    y = y - gapFive - knobDiameter     -- change 'y' for next knob
+                end
             end
 
             -- draw background workspace box
             graphics.set_color(66/255, 66/255, 66/255, 1) -- dark gray
-            local x2 = mainX
-            local x1 = x2 - (2*knobRadius) - fixedTextSpace
-            local y1 = topBoxY
-            local y2 = y1 - (numKnobs*(knobRadius*2)) - ((numKnobs)*fixedGap)
-            graphics.draw_rectangle(x1,y1,x2,y2)
+            local x1 = mainX - knobDiameter - fixedTextSpace
+            local y2 = topBoxY - (numKnobs*knobDiameter) - (numKnobs*gapFive)
+            graphics.draw_rectangle(x1,topBoxY,mainX,y2)
 
             graphics.set_color(45/255,150/255,10/255,1) -- green
             for i = 1,numKnobs do
@@ -253,18 +263,18 @@ function B2VolumeControl_mouseClick()
             if (MOUSE_X >= (knobs[i][knobX]-knobRadius-fixedTextSpace) and MOUSE_X <= (knobs[i][knobX]+knobRadius) and
                 MOUSE_Y >= (knobs[i][knobY]-knobRadius) and MOUSE_Y <= (knobs[i][knobY]+knobRadius)) then
                 RESUME_MOUSE_CLICK = true
-                if not(knobs[i][knobExt] == -2) then bSaveRequired = true end   -- unchangeable knob
+                if not(knobs[i][knobExt] == knobFailedTest) then bSaveRequired = true end   -- unchangeable knob
 
-                if (knobs[i][knobExt] == -1) then
+                if (knobs[i][knobExt] == knobSingleMark) then
                     -- toggle Inner/Outer enabled by setting knobExt to current shared value
                     knobs[i][knobExt] = knobs[i][knobInt]
                 elseif (knobs[i][knobExt] >= 0) then
-                    -- toggle Inner/Outer disabled by setting knobExt to -1
+                    -- toggle Inner/Outer disabled by setting knobExt to knobSingleMark
                     if (b2vc_viewExternal == 0) then    -- internal view
-                        knobs[i][knobExt] = -1
+                        knobs[i][knobExt] = knobSingleMark
                     else                                -- external view
                         knobs[i][knobInt] = knobs[i][knobExt]
-                        knobs[i][knobExt] = -1
+                        knobs[i][knobExt] = knobSingleMark
                     end
                 end
                 return
@@ -287,36 +297,42 @@ function B2VolumeControl_mouseClick()
 
     -- check if position over our save icon
     if (MOUSE_STATUS == "down" and 
-        MOUSE_X >= (mainX-69) and MOUSE_X <= (mainX-51) and 
+        MOUSE_X >= (mainX-74) and MOUSE_X <= (mainX-55) and 
         MOUSE_Y >= (mainY-9) and MOUSE_Y <= (mainY+7)) then
         B2VolumeControl_SaveModifiedConfig()
     end
 
     -- check if position over our drag icon
     if (MOUSE_STATUS == "down" and 
-        MOUSE_X >= (mainX-85-5) and MOUSE_X <= (mainX-85+5) and 
+        MOUSE_X >= (mainX-95-5) and MOUSE_X <= (mainX-95+5) and 
         MOUSE_Y >= (mainY-5) and MOUSE_Y <= (mainY+5)) then
         bDragging = true
         RESUME_MOUSE_CLICK = true
     elseif (bDragging == true and MOUSE_STATUS == "drag") then
-        mainX = MOUSE_X + 85
+        mainX = MOUSE_X + 95
         mainY = MOUSE_Y
         bAutoPosition = false
         bSaveRequired = true
+
+        -- see if we are 'close enough' to original default to snap in place
+        if (mainX > snapMainX - 20 and mainX < snapMainX + 20 and 
+            mainY > snapMainY - 15 and mainY < snapMainY + 15) then
+            mainX = snapMainX
+            mainY = snapMainY
+            bAutoPosition = true
+        end
     end
 end
 
 function B2VolumeControl_onMouseWheel()
     -- mouse wheel only important if knobs visible
-    if (bDrawControlBox == false) then
-        return
-    end
+    if (bDrawControlBox == false) then return end
 
     for i = 1,numKnobs do
         if (MOUSE_X >= (knobs[i][knobX]-knobRadius-fixedTextSpace) and MOUSE_X <= (knobs[i][knobX]+knobRadius) and
             MOUSE_Y >= (knobs[i][knobY]-knobRadius) and MOUSE_Y <= (knobs[i][knobY]+knobRadius)) then
             B2VolumeControl_SetVolume(i,B2VolumeControl_GetVolume(i)+(MOUSE_WHEEL_CLICKS*0.02))
-            if not(knobs[i][knobExt] == -2) then bSaveRequired = true end   -- unchangeable knob
+            if not(knobs[i][knobExt] == knobFailedTest) then bSaveRequired = true end   -- unchangeable knob
             RESUME_MOUSE_WHEEL = true
             return
         end
@@ -324,6 +340,8 @@ function B2VolumeControl_onMouseWheel()
 end
 
 function B2VolumeControl_drawKnob(i)
+    if (i < 1 or i > numKnobs) then return end  -- array size protection
+
     local x = knobs[i][knobX]
     local y = knobs[i][knobY]
 
@@ -331,7 +349,7 @@ function B2VolumeControl_drawKnob(i)
         -- before drawing the arcs, make sure the data we have is up to date
         if (knobs[i][knobExt] < 0 or b2vc_viewExternal == 0) then   -- for single mark or interior view
             if not(knobs[i][knobInt] == B2VolumeControl_GetVolume(i)) then
-                if (bFirstDraw == false and not(knobs[i][knobExt] == -2)) then bFirstDraw = true bSaveRequired = true end
+                if (bFirstDraw == false and not(knobs[i][knobExt] == knobFailedTest)) then bFirstDraw = true bSaveRequired = true end
             end
             knobs[i][knobInt] = B2VolumeControl_GetVolume(i)
         else                                                        -- for external view
@@ -352,10 +370,10 @@ function B2VolumeControl_drawKnob(i)
     graphics.draw_filled_arc(x,y,210,360,19)
     graphics.draw_filled_arc(x,y,0,150,19)
 
-    if (knobs[i][knobExt] == -2) then               -- can't change, draw all black, thin
+    if (knobs[i][knobExt] == knobFailedTest) then               -- can't change, draw all black, thin
         graphics.set_color(0,0,0,1)                 -- black
         graphics.draw_angle_arrow(x,y,((knobs[i][knobInt]*300)+210)%360,knobRadius-1,knobRadius/2,1)
-    elseif (knobs[i][knobExt] == -1) then           -- shared value, draw pointer
+    elseif (knobs[i][knobExt] == knobSingleMark) then           -- shared value, draw pointer
         graphics.set_color(173/255,31/255,31/255,1) -- a nice red
         graphics.draw_angle_arrow(x,y,((knobs[i][knobInt]*300)+210)%360,knobRadius-1,knobRadius/2,2)
     elseif (b2vc_viewExternal == 0) then            -- current view is internal
@@ -371,17 +389,6 @@ function B2VolumeControl_drawKnob(i)
     end
 
     draw_string(knobs[i][knobTextX],y,knobs[i][knobName],239/255,219/255,172/255)
-end
-
-function B2VolumeControl_computeKnobLocation()
-    local y = topBoxY - knobRadius
-    local textX = mainX - (2*knobRadius) - fixedTextSpace + 3   -- the '+3' just makes it look nicer
-    for i = 1,numKnobs do
-        knobs[i][knobX] = mainX - knobRadius - 2                -- '-2' just to look nicer
-        knobs[i][knobY] = y - 1                                 -- '-1' just to look nicer
-        knobs[i][knobTextX] = textX
-        y = y - fixedGap - (2*knobRadius)  -- change 'y' for next knob
-    end
 end
 
 function B2VolumeControl_OpenParseConfig()
@@ -414,7 +421,9 @@ function B2VolumeControl_OpenParseConfig()
                 end
             end
         end
+
         if (fileName == nil) then
+            local lInt,lExt
             local _,_,lFileName,lData = string.find(i, "^(.+%.acf)[%s+](.+)")
             if (lFileName and lFileName == AIRCRAFT_FILENAME) then
                 if (lFileName == AIRCRAFT_FILENAME) then
@@ -434,7 +443,7 @@ function B2VolumeControl_OpenParseConfig()
             end
         end
     end
-    bSaveRequired = false
+    if (fileName) then bSaveRequired = false end    -- loaded this acf from file, so no need to require save
 end
 
 function B2VolumeControl_SaveModifiedConfig()
@@ -466,15 +475,15 @@ function B2VolumeControl_SaveModifiedConfig()
     if (oldStr) then
         for i in string.gfind(oldStr,"%s*(.-)\n") do
             -- look at each line for an acf file entry, then, if that
-            -- entry doesn't match the loaded acf write its data
-            local start,_,lFileName,lData = string.find(i, "^(.+%.acf)[%s+](.+)$")
+            -- entry doesn't match the loaded acf, write its data
+            local start,_,lFileName = string.find(i, "^(.+%.acf)[%s+].+$")
             if (start and not(lFileName == AIRCRAFT_FILENAME)) then
                 newStr = string.format(newStr .. i .. "\n")
             end
         end
     end
 
-    local configFile = io.open(SCRIPT_DIRECTORY .. "B2VolumeControl.dat","w")
+    configFile = io.open(SCRIPT_DIRECTORY .. "B2VolumeControl.dat","w")
     if not(configFile) then return end      -- error handled
     io.output(configFile)
     io.write(newStr)

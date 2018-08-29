@@ -5,7 +5,6 @@
    place the 'B2VolumeControl.lua' file into your FlyWithLua scripts folder
       path:    ...\X-Plane 11\Resources\plugins\FlyWithLua\Scripts\
 
-    Latest release can be found on the x-plane forums
-        <link once I actually post something>
-        https://forums.x-plane.org/index.php?/forums/forum/336-useful-lua-scripts/<mine mine mine>
-        https://forums.x-plane.org/index.php?/files/category/9-utilities/<mine mine mine>
+    Latest release can be found on the x-plane forums or Github
+        https://forums.x-plane.org/index.php?/files/category/9-utilities/
+        https://github.com/B2VideoGames/B2VolumeControl

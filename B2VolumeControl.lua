@@ -2,7 +2,7 @@ require "graphics"
 
 -- B2VolumeControl.lua
 --   To be used in conjunction with X-Plane's FlyWithLua scripting package
---   Developed using FlyWithLua Complete v2.6.7
+--   Developed with FlyWithLua Complete v2.6.7 (other versions likely work, but untested)
 -- 
 --   Place B2VolumeControl.lua in your FlyWithLua scripts folder
 --      path:    ...\X-Plane 11\Resources\plugins\FlyWithLua\Scripts\
@@ -21,7 +21,9 @@ require "graphics"
 --              as desired, so if you roll your mouse wheel while over a 'knob' and nothing
 --              happens, that is probably why
 --
---   Initial version:   Aug 2018    B2_
+--   Initial version 1:   Aug 2018    B2_   knobs to control sound
+--           version 2:   Aug 2018    B2_   added interior/exterior knobs, save/load a preference file,
+--                                          and ability to drag the widget
 --
 -- Copyright 2018 B2videogames@gmail.com
 --  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and

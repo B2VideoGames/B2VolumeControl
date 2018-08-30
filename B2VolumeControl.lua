@@ -24,6 +24,7 @@ require "graphics"
 --   Initial version 1:   Aug 2018    B2_   knobs to control sound
 --           version 2:   Aug 2018    B2_   added interior/exterior knobs, save/load a preference file,
 --                                          and ability to drag the widget
+--           version 2.1: Aug 2018    B2_   fix reloading of lua scripts when in external view
 --
 -- Copyright 2018 B2videogames@gmail.com
 --  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
@@ -41,7 +42,7 @@ require "graphics"
 --  OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 --  CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-local b2vc_SoftwareVersion = 2
+local b2vc_SoftwareVersion = 2.1
 local b2vc_FileFormat = 1
 
 dataref("b2vc_mastervolume", "sim/operation/sound/master_volume_ratio", "writable")
@@ -434,7 +435,7 @@ function B2VolumeControl_OpenParseConfig()
                     for lInt,lExt in string.gfind(lData,"%s-(%d%.%d+)%s+(%-?%d%.%d+)") do 
                         knobs[knobNum][knobInt] = tonumber(lInt)
                         knobs[knobNum][knobExt] = tonumber(lExt)
-                        if (b2vc_viewExternal == 0) then
+                        if (b2vc_viewExternal == 0 or knobs[knobNum][knobExt] < 0) then
                             B2VolumeControl_SetVolume(knobNum,knobs[knobNum][knobInt])
                         else
                             B2VolumeControl_SetVolume(knobNum,knobs[knobNum][knobExt])

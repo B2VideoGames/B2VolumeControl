@@ -26,7 +26,7 @@ require "graphics"
 --                                          and ability to drag the widget
 --           version 2.1: Aug 2018    B2_   fix reloading of lua scripts when in external view
 --
--- Copyright 2018 B2videogames@gmail.com
+-- Copyright 2021 B2videogames@gmail.com
 --  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
 --  associated documentation files (the "Software"), to deal in the Software without restriction,
 --  including without limitation the rights to use, copy, modify, merge, publish, distribute,
@@ -42,8 +42,11 @@ require "graphics"
 --  OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 --  CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-local b2vc_SoftwareVersion = 2.1
+local b2vc_SoftwareVersion = 2.2
+ --   ver 2.1   Original release
+ --   ver 2.2   haze control
 local b2vc_FileFormat = 1
+ --   ver 1     Original
 
 dataref("b2vc_mastervolume", "sim/operation/sound/master_volume_ratio", "writable")
 dataref("b2vc_exteriorVolume", "sim/operation/sound/exterior_volume_ratio", "writable")
@@ -53,6 +56,7 @@ dataref("b2vc_radioVolume", "sim/operation/sound/radio_volume_ratio", "writable"
 dataref("b2vc_enviroVolume", "sim/operation/sound/enviro_volume_ratio", "writable")
 dataref("b2vc_uiVolume", "sim/operation/sound/ui_volume_ratio", "writable")
 dataref("b2vc_viewExternal", "sim/graphics/view/view_is_external")
+dataref("b2vc_haze", "sim/private/controls/fog/fog_be_gone", "writable")
 
 local snapMainX = SCREEN_WIDTH - 10
 local snapMainY = SCREEN_HIGHT - 40
@@ -79,7 +83,7 @@ local knobFailedTest = -2   -- 'failed' set test
 local i  -- just for local iterations
 
 -- knobs[knobX,knobY,knobName,knobTextX,knobInt,knobExt]
-local numKnobs = 7  -- total count of Volume datarefs
+local numVolKnobs = 7  -- total count of Volume datarefs
 local knobX = 1
 local knobY = 2
 local knobName = 3
@@ -93,6 +97,7 @@ local knobs = { {0, 0, "master",   0, b2vc_mastervolume,   knobSingleMark},
                 {0, 0, "radio",    0, b2vc_radioVolume,    knobSingleMark},
                 {0, 0, "enviro",   0, b2vc_enviroVolume,   knobSingleMark},
                 {0, 0, "ui",       0, b2vc_uiVolume,       knobSingleMark} }
+local hazeHeight = 10
 
 do_often("B2VolumeControl_everySec()")
 do_every_draw("B2VolumeControl_everyDraw()")
@@ -119,14 +124,14 @@ function B2VolumeControl_everySec()
     else -- manual position
         -- make sure we aren't drawing off the screen
         -- X:: from mainX-knobDiameter-fixedTextSpace to mainX
-        -- Y:: from mainY-(4*gapFive)-(numKnobs*knobDiameter)-(numKnobs*gapFive) to mainY+15
+        -- Y:: from mainY-(4*gapFive)-(numVolKnobs*knobDiameter)- hazeHeight - ((numVolKnobs+1)*gapFive) to mainY+15
         if ((mainX-knobDiameter-fixedTextSpace) < 0) then
             mainX = knobDiameter+fixedTextSpace
         elseif (mainX > SCREEN_WIDTH) then 
             mainX = SCREEN_WIDTH
         end
-        if (mainY-(4*gapFive)-(numKnobs*knobDiameter)-(numKnobs*gapFive) < 0) then
-            mainY = (4*gapFive)+(numKnobs*knobDiameter)+(numKnobs*gapFive)
+        if (mainY-(4*gapFive)-(numVolKnobs*knobDiameter)-hazeHeight-((numVolKnobs+1)*gapFive) < 0) then
+            mainY = (4*gapFive)+(numVolKnobs*knobDiameter)+hazeHeight+((numVolKnobs+1)*gapFive)
         elseif ((mainY+15) > SCREEN_HIGHT) then
             mainY = SCREEN_HIGHT - 15
         end
@@ -139,14 +144,14 @@ function B2VolumeControl_everyFrame()
 
     local testValue = 0.03125 -- a good 'binary' random number to prevent float issues
     if (initialTest == 1) then                                  -- stage 1 of test
-        for i = 1,numKnobs do
+        for i = 1,numVolKnobs do
             knobs[i][knobExt] = B2VolumeControl_GetVolume(i)    -- store original Value 
             B2VolumeControl_SetVolume(i,testValue)              -- set a random number to see if it takes
         end
         initialTest = 2                                         -- ready for stage 2 of test
         return
     elseif (initialTest == 2) then
-        for i = 1,numKnobs do
+        for i = 1,numVolKnobs do
             local testResult = B2VolumeControl_GetVolume(i)
             if (testResult == testValue) then                   -- check against test number
                 testResult = knobSingleMark                     -- test passed
@@ -165,7 +170,7 @@ function B2VolumeControl_everyFrame()
     -- if/when the view is swapped from interior/exterior (or vice versa) 
     -- we need to handle the active dial swaps
     if not(prevView == b2vc_viewExternal) then --internal/external view swap, change volumes if necessary
-        for i = 1,numKnobs do
+        for i = 1,numVolKnobs do
             if (knobs[i][knobExt] >= 0) then
                 if (b2vc_viewExternal == 0) then    -- internal view
                     B2VolumeControl_SetVolume(i,knobs[i][knobInt])
@@ -236,25 +241,32 @@ function B2VolumeControl_everyDraw()
             if (bScreenSizeChanged == true) then
                 local y = topBoxY - knobRadius
                 local textX = mainX - knobDiameter - fixedTextSpace + 3   -- the '+3' just makes it look nicer
-                for i = 1,numKnobs do
+                for i = 1,numVolKnobs do
                     knobs[i][knobX] = mainX - knobRadius - 2                -- '-2' just to look nicer
                     knobs[i][knobY] = y - 1                                 -- '-1' just to look nicer
                     knobs[i][knobTextX] = textX
                     y = y - gapFive - knobDiameter     -- change 'y' for next knob
                 end
+                y = y - gapFive - hazeHeight
             end
 
             -- draw background workspace box
             graphics.set_color(66/255, 66/255, 66/255, 1) -- dark gray
             local x1 = mainX - knobDiameter - fixedTextSpace
-            local y2 = topBoxY - (numKnobs*knobDiameter) - (numKnobs*gapFive)
+            local y2 = topBoxY - (numVolKnobs*knobDiameter) - hazeHeight - ((numVolKnobs+1)*gapFive)
             graphics.draw_rectangle(x1,topBoxY,mainX,y2)
 
             graphics.set_color(45/255,150/255,10/255,1) -- green
-            for i = 1,numKnobs do
+            for i = 1,numVolKnobs do
                 B2VolumeControl_drawKnob(i)
             end
-        bFirstDraw = false
+
+            -- draw haze 
+            local str = string.format("%6.1f",b2vc_haze)
+            draw_string(knobs[numVolKnobs][knobTextX],topBoxY - (numVolKnobs*knobDiameter) - ((numVolKnobs+1)*gapFive),"haze",239/255,219/255,172/255)
+            draw_string(knobs[numVolKnobs][knobTextX]+fixedTextSpace-15,topBoxY - (numVolKnobs*knobDiameter) - ((numVolKnobs+1)*gapFive),str,239/255,219/255,172/255)
+            
+            bFirstDraw = false
         end -- box drawn
     end -- mouse near click spot
 end
@@ -263,7 +275,7 @@ function B2VolumeControl_mouseClick()
     if (MOUSE_STATUS == "up") then bDragging = false end
 
     if (MOUSE_STATUS == "down" and bDrawControlBox == true) then
-        for i = 1,numKnobs do
+        for i = 1,numVolKnobs do
             if (MOUSE_X >= (knobs[i][knobX]-knobRadius-fixedTextSpace) and MOUSE_X <= (knobs[i][knobX]+knobRadius) and
                 MOUSE_Y >= (knobs[i][knobY]-knobRadius) and MOUSE_Y <= (knobs[i][knobY]+knobRadius)) then
                 RESUME_MOUSE_CLICK = true
@@ -332,19 +344,36 @@ function B2VolumeControl_onMouseWheel()
     -- mouse wheel only important if knobs visible
     if (bDrawControlBox == false) then return end
 
-    for i = 1,numKnobs do
+    -- eat MOUSE_WHEEL if within our box
+    if (MOUSE_X >= (mainX - knobDiameter - fixedTextSpace) and 
+        MOUSE_X <= mainX and 
+        MOUSE_Y >= (mainY - (4*gapFive) - (numVolKnobs*knobDiameter) - hazeHeight - ((numVolKnobs+1)*gapFive)) and 
+        MOUSE_Y <= (mainY - (4*gapFive))) then
+        RESUME_MOUSE_WHEEL = true
+    end
+
+    for i = 1,numVolKnobs do
         if (MOUSE_X >= (knobs[i][knobX]-knobRadius-fixedTextSpace) and MOUSE_X <= (knobs[i][knobX]+knobRadius) and
             MOUSE_Y >= (knobs[i][knobY]-knobRadius) and MOUSE_Y <= (knobs[i][knobY]+knobRadius)) then
             B2VolumeControl_SetVolume(i,B2VolumeControl_GetVolume(i)+(MOUSE_WHEEL_CLICKS*0.02))
             if not(knobs[i][knobExt] == knobFailedTest) then bSaveRequired = true end   -- unchangeable knob
-            RESUME_MOUSE_WHEEL = true
             return
         end
     end
+
+    -- do haze scroll
+    if (MOUSE_X >= (knobs[numVolKnobs][knobX]-knobRadius-fixedTextSpace) and MOUSE_X <= (knobs[numVolKnobs][knobX]+knobRadius) and
+        MOUSE_Y >= (knobs[numVolKnobs][knobY]-(knobRadius+(gapFive*2)+hazeHeight)) and MOUSE_Y <= (knobs[numVolKnobs][knobY]-(knobRadius+(gapFive*0.5)))) then
+        local prev = b2vc_haze
+        local step = math.max(0.1,0.1 * (10 ^ math.max(0,math.log10(prev))))
+        b2vc_haze = math.min(65535,math.max(0,prev+(MOUSE_WHEEL_CLICKS*(step))))
+        return
+    end
+
 end
 
 function B2VolumeControl_drawKnob(i)
-    if (i < 1 or i > numKnobs) then return end  -- array size protection
+    if (i < 1 or i > numVolKnobs) then return end  -- array size protection
 
     local x = knobs[i][knobX]
     local y = knobs[i][knobY]
@@ -470,7 +499,7 @@ function B2VolumeControl_SaveModifiedConfig()
 
     -- store the current config data for loaded acf
     newStr = string.format(newStr .. AIRCRAFT_FILENAME)
-    for i = 1,numKnobs do
+    for i = 1,numVolKnobs do
         newStr = string.format("%s %f %f",newStr,knobs[i][knobInt],knobs[i][knobExt])
     end
     newStr = string.format(newStr .. "\n")
@@ -504,6 +533,7 @@ function B2VolumeControl_GetVolume(i)
     if (i == 5) then return b2vc_radioVolume end
     if (i == 6) then return b2vc_enviroVolume end
     if (i == 7) then return b2vc_uiVolume end
+
     return 0
 end
 

@@ -186,6 +186,7 @@ function B2VolumeControl_everyDraw()
     if (bDrawControlBox == true or
         (MOUSE_X >= (mainX-100) and MOUSE_X <= (mainX+100) and 
          MOUSE_Y >= (mainY-100) and MOUSE_Y <= (mainY+100))) then
+        graphics.set_width(1)
 
         -- always draw clickable sound icon
         graphics.set_color(0,0,0,1) -- black

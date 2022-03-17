@@ -21,12 +21,16 @@ require "graphics"
 --              as desired, so if you roll your mouse wheel while over a 'knob' and nothing
 --              happens, that is probably why
 --
---   Initial version 1:   Aug 2018    B2_   knobs to control sound
---           version 2:   Aug 2018    B2_   added interior/exterior knobs, save/load a preference file,
---                                          and ability to drag the widget
---           version 2.1: Aug 2018    B2_   fix reloading of lua scripts when in external view
+--   Initial version 1:    Aug 2018    B2_   knobs to control sound
+--           version 2:    Aug 2018    B2_   added interior/exterior knobs, save/load a preference file,
+--                                           and ability to drag the widget
+--           version 2.1:  Aug 2018    B2_   fix reloading of lua scripts when in external view
+--           version 2.2:  Oct 2021    B2_   add haze control
+--                                           removed tiny gaps in scroll wheel capture
+--           version 2.3:  Mar 2022    B2_   change string.gfind to string.gmatch, without haze control
+--           version 2.3h: Mar 2022    B2_   2.2 with haze control
 --
--- Copyright 2021 B2videogames@gmail.com
+-- Copyright 2022 B2videogames@gmail.com
 --  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
 --  associated documentation files (the "Software"), to deal in the Software without restriction,
 --  including without limitation the rights to use, copy, modify, merge, publish, distribute,
@@ -42,9 +46,11 @@ require "graphics"
 --  OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 --  CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-local b2vc_SoftwareVersion = 2.2
+local b2vc_SoftwareVersion = 2.3
  --   ver 2.1   Original release
  --   ver 2.2   haze control
+ --   ver 2.3   Lua 5.1 compatible, without haze control
+ --   ver 2.3h  Lua 5.1 compatible, with haze control
 local b2vc_FileFormat = 1
  --   ver 1     Original
 
@@ -56,7 +62,9 @@ dataref("b2vc_radioVolume", "sim/operation/sound/radio_volume_ratio", "writable"
 dataref("b2vc_enviroVolume", "sim/operation/sound/enviro_volume_ratio", "writable")
 dataref("b2vc_uiVolume", "sim/operation/sound/ui_volume_ratio", "writable")
 dataref("b2vc_viewExternal", "sim/graphics/view/view_is_external")
-dataref("b2vc_haze", "sim/private/controls/fog/fog_be_gone", "writable")
+
+local bHazeControl = false
+-- dataref("b2vc_haze", "sim/private/controls/fog/fog_be_gone", "writable")
 
 local snapMainX = SCREEN_WIDTH - 10
 local snapMainY = SCREEN_HIGHT - 40
@@ -97,7 +105,10 @@ local knobs = { {0, 0, "master",   0, b2vc_mastervolume,   knobSingleMark},
                 {0, 0, "radio",    0, b2vc_radioVolume,    knobSingleMark},
                 {0, 0, "enviro",   0, b2vc_enviroVolume,   knobSingleMark},
                 {0, 0, "ui",       0, b2vc_uiVolume,       knobSingleMark} }
-local hazeHeight = 10
+local hazeHeight = 0
+if (bHazeControl == true) then
+    hazeHeight = 10
+end
 
 do_often("B2VolumeControl_everySec()")
 do_every_draw("B2VolumeControl_everyDraw()")
@@ -262,10 +273,12 @@ function B2VolumeControl_everyDraw()
             end
 
             -- draw haze 
-            local str = string.format("%6.1f",b2vc_haze)
-            draw_string(knobs[numVolKnobs][knobTextX],topBoxY - (numVolKnobs*knobDiameter) - ((numVolKnobs+1)*gapFive),"haze",239/255,219/255,172/255)
-            draw_string(knobs[numVolKnobs][knobTextX]+fixedTextSpace-15,topBoxY - (numVolKnobs*knobDiameter) - ((numVolKnobs+1)*gapFive),str,239/255,219/255,172/255)
-            
+            if (bHazeControl == true) then
+                local str = string.format("%6.1f",b2vc_haze)
+                draw_string(knobs[numVolKnobs][knobTextX],topBoxY - (numVolKnobs*knobDiameter) - ((numVolKnobs+1)*gapFive),"haze",239/255,219/255,172/255)
+                draw_string(knobs[numVolKnobs][knobTextX]+fixedTextSpace-15,topBoxY - (numVolKnobs*knobDiameter) - ((numVolKnobs+1)*gapFive),str,239/255,219/255,172/255)
+            end
+
             bFirstDraw = false
         end -- box drawn
     end -- mouse near click spot
@@ -362,12 +375,14 @@ function B2VolumeControl_onMouseWheel()
     end
 
     -- do haze scroll
-    if (MOUSE_X >= (knobs[numVolKnobs][knobX]-knobRadius-fixedTextSpace) and MOUSE_X <= (knobs[numVolKnobs][knobX]+knobRadius) and
-        MOUSE_Y >= (knobs[numVolKnobs][knobY]-(knobRadius+(gapFive*2)+hazeHeight)) and MOUSE_Y <= (knobs[numVolKnobs][knobY]-(knobRadius+(gapFive*0.5)))) then
-        local prev = b2vc_haze
-        local step = math.max(0.1,0.1 * (10 ^ math.max(0,math.log10(prev))))
-        b2vc_haze = math.min(65535,math.max(0,prev+(MOUSE_WHEEL_CLICKS*(step))))
-        return
+    if (bHazeControl == true) then
+        if (MOUSE_X >= (knobs[numVolKnobs][knobX]-knobRadius-fixedTextSpace) and MOUSE_X <= (knobs[numVolKnobs][knobX]+knobRadius) and
+            MOUSE_Y >= (knobs[numVolKnobs][knobY]-(knobRadius+(gapFive*2)+hazeHeight)) and MOUSE_Y <= (knobs[numVolKnobs][knobY]-(knobRadius+(gapFive*0.5)))) then
+            local prev = b2vc_haze
+            local step = math.max(0.1,0.1 * (10 ^ math.max(0,math.log10(prev))))
+            b2vc_haze = math.min(65535,math.max(0,prev+(MOUSE_WHEEL_CLICKS*(step))))
+            return
+        end
     end
 
 end
@@ -438,7 +453,7 @@ function B2VolumeControl_OpenParseConfig()
     local fileY = nil
     local fileName = nil
     
-    for i in string.gfind(tmpStr,"%s*(.-)\n") do
+    for i in string.gmatch(tmpStr,"%s*(.-)\n") do
         if (fileVersion == nil) then _,_,fileVersion = string.find(i, "VERSION%s+(%d+)") end
         if (fileX == nil and fileY == nil) then 
             _,_,fileX,fileY = string.find(i, "X:%s*(%d+)%s+Y:%s*(%d+)")
@@ -462,7 +477,7 @@ function B2VolumeControl_OpenParseConfig()
                 if (lFileName == AIRCRAFT_FILENAME) then
                     fileName = lFileName
                     local knobNum = 1
-                    for lInt,lExt in string.gfind(lData,"%s-(%d%.%d+)%s+(%-?%d%.%d+)") do 
+                    for lInt,lExt in string.gmatch(lData,"%s-(%d%.%d+)%s+(%-?%d%.%d+)") do 
                         knobs[knobNum][knobInt] = tonumber(lInt)
                         knobs[knobNum][knobExt] = tonumber(lExt)
                         if (b2vc_viewExternal == 0 or knobs[knobNum][knobExt] < 0) then
@@ -506,7 +521,7 @@ function B2VolumeControl_SaveModifiedConfig()
 
     -- if oldStr, we need to duplicate all the acf data that isn't our current acf
     if (oldStr) then
-        for i in string.gfind(oldStr,"%s*(.-)\n") do
+        for i in string.gmatch(oldStr,"%s*(.-)\n") do
             -- look at each line for an acf file entry, then, if that
             -- entry doesn't match the loaded acf, write its data
             local start,_,lFileName = string.find(i, "^(.+%.acf)[%s+].+$")

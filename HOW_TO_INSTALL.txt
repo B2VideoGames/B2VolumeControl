@@ -1,9 +1,9 @@
  B2VolumeControl.lua
    to be used in conjunction with X-Plane's FlyWithLua scripting package
-   developed using FlyWithLua Complete v2.6.7
+   developed using FlyWithLua NG+ v2.8.0
  
    place the 'B2VolumeControl.lua' file into your FlyWithLua scripts folder
-      path:    ...\X-Plane 11\Resources\plugins\FlyWithLua\Scripts\
+      path:    ...\X-Plane 12\Resources\plugins\FlyWithLua\Scripts\
 
     Latest release can be found on the x-plane forums or Github
         https://forums.x-plane.org/index.php?/files/category/9-utilities/

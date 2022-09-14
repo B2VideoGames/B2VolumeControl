@@ -2,10 +2,10 @@ require "graphics"
 
 -- B2VolumeControl.lua
 --   To be used in conjunction with X-Plane's FlyWithLua scripting package
---   Developed with FlyWithLua Complete v2.6.7 (other versions likely work, but untested)
+--   Developed with FlyWithLua NG+ 2.8.0, which is a new version for X-Plane 12
 -- 
 --   Place B2VolumeControl.lua in your FlyWithLua scripts folder
---      path:    ...\X-Plane 11\Resources\plugins\FlyWithLua\Scripts\
+--      path:    ...\X-Plane 12\Resources\plugins\FlyWithLua\Scripts\
 --
 --   ** This script will allow you to adjust the X-Plane11 sound sliders without going
 --          into the settings menu and without needing to pause the simulator.  
@@ -29,6 +29,8 @@ require "graphics"
 --                                           removed tiny gaps in scroll wheel capture
 --           version 2.3:  Mar 2022    B2_   change string.gfind to string.gmatch, without haze control
 --           version 2.3h: Mar 2022    B2_   2.2 with haze control
+--           version 2.4:  Sep 2022    B2_   removed all haze (deprecated)fog_be_gone reference
+--                                           added 'pilot' volume knob
 --
 -- Copyright 2022 B2videogames@gmail.com
 --  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
@@ -46,25 +48,25 @@ require "graphics"
 --  OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 --  CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-local b2vc_SoftwareVersion = "2.3"
+local b2vc_SoftwareVersion = "2.4"
  --   ver 2.1   Original release
  --   ver 2.2   haze control
  --   ver 2.3   Lua 5.1 compatible, without haze control
  --   ver 2.3h  Lua 5.1 compatible, with haze control
-local b2vc_FileFormat = 1
+ --   ver 2.4   removed haze support for XP12, added pilot knob
+local b2vc_FileFormat = 2
  --   ver 1     Original
-
-local bHazeControl = false  
+ --   ver 2     added 'Pilot' knob
 
 dataref("b2vc_mastervolume", "sim/operation/sound/master_volume_ratio", "writable")
 dataref("b2vc_exteriorVolume", "sim/operation/sound/exterior_volume_ratio", "writable")
 dataref("b2vc_interiorVolume", "sim/operation/sound/interior_volume_ratio", "writable")
+dataref("b2vc_pilotVolume", "sim/operation/sound/pilot_volume_ratio", "writable")
 dataref("b2vc_copilotVolume", "sim/operation/sound/copilot_volume_ratio", "writable")
 dataref("b2vc_radioVolume", "sim/operation/sound/radio_volume_ratio", "writable")
 dataref("b2vc_enviroVolume", "sim/operation/sound/enviro_volume_ratio", "writable")
 dataref("b2vc_uiVolume", "sim/operation/sound/ui_volume_ratio", "writable")
 dataref("b2vc_viewExternal", "sim/graphics/view/view_is_external")
--- dataref("b2vc_haze", "sim/private/controls/fog/fog_be_gone", "writable")
 
 local snapMainX = SCREEN_WIDTH - 10
 local snapMainY = SCREEN_HIGHT - 40
@@ -91,7 +93,7 @@ local knobFailedTest = -2   -- 'failed' set test
 local i  -- just for local iterations
 
 -- knobs[knobX,knobY,knobName,knobTextX,knobInt,knobExt]
-local numVolKnobs = 7  -- total count of Volume datarefs
+local numVolKnobs = 8  -- total count of Volume datarefs
 local knobX = 1
 local knobY = 2
 local knobName = 3
@@ -101,14 +103,11 @@ local knobExt = 6   -- volume or knobFailedTest or knobSingleMark
 local knobs = { {0, 0, "master",   0, b2vc_mastervolume,   knobSingleMark},
                 {0, 0, "exterior", 0, b2vc_exteriorVolume, knobSingleMark},
                 {0, 0, "interior", 0, b2vc_interiorVolume, knobSingleMark},
+                {0, 0, "pilot",    0, b2vc_pilotVolume,    knobSingleMark},
                 {0, 0, "copilot",  0, b2vc_copilotVolume,  knobSingleMark},
                 {0, 0, "radio",    0, b2vc_radioVolume,    knobSingleMark},
                 {0, 0, "enviro",   0, b2vc_enviroVolume,   knobSingleMark},
                 {0, 0, "ui",       0, b2vc_uiVolume,       knobSingleMark} }
-local hazeHeight = 0
-if (bHazeControl == true) then
-    hazeHeight = 10
-end
 
 do_often("B2VolumeControl_everySec()")
 do_every_draw("B2VolumeControl_everyDraw()")
@@ -135,14 +134,14 @@ function B2VolumeControl_everySec()
     else -- manual position
         -- make sure we aren't drawing off the screen
         -- X:: from mainX-knobDiameter-fixedTextSpace to mainX
-        -- Y:: from mainY-(4*gapFive)-(numVolKnobs*knobDiameter)- hazeHeight - ((numVolKnobs+1)*gapFive) to mainY+15
+        -- Y:: from mainY-(4*gapFive)-(numVolKnobs*knobDiameter)- ((numVolKnobs+1)*gapFive) to mainY+15
         if ((mainX-knobDiameter-fixedTextSpace) < 0) then
             mainX = knobDiameter+fixedTextSpace
         elseif (mainX > SCREEN_WIDTH) then 
             mainX = SCREEN_WIDTH
         end
-        if (mainY-(4*gapFive)-(numVolKnobs*knobDiameter)-hazeHeight-((numVolKnobs+1)*gapFive) < 0) then
-            mainY = (4*gapFive)+(numVolKnobs*knobDiameter)+hazeHeight+((numVolKnobs+1)*gapFive)
+        if (mainY-(4*gapFive)-(numVolKnobs*knobDiameter)-((numVolKnobs+1)*gapFive) < 0) then
+            mainY = (4*gapFive)+(numVolKnobs*knobDiameter)+((numVolKnobs+1)*gapFive)
         elseif ((mainY+15) > SCREEN_HIGHT) then
             mainY = SCREEN_HIGHT - 15
         end
@@ -258,25 +257,18 @@ function B2VolumeControl_everyDraw()
                     knobs[i][knobTextX] = textX
                     y = y - gapFive - knobDiameter     -- change 'y' for next knob
                 end
-                y = y - gapFive - hazeHeight
+                y = y - gapFive
             end
 
             -- draw background workspace box
             graphics.set_color(66/255, 66/255, 66/255, 1) -- dark gray
             local x1 = mainX - knobDiameter - fixedTextSpace
-            local y2 = topBoxY - (numVolKnobs*knobDiameter) - hazeHeight - ((numVolKnobs+1)*gapFive)
+            local y2 = topBoxY - (numVolKnobs*knobDiameter) - ((numVolKnobs+1)*gapFive)
             graphics.draw_rectangle(x1,topBoxY,mainX,y2)
 
             graphics.set_color(45/255,150/255,10/255,1) -- green
             for i = 1,numVolKnobs do
                 B2VolumeControl_drawKnob(i)
-            end
-
-            -- draw haze 
-            if (bHazeControl == true) then
-                local str = string.format("%6.1f",b2vc_haze)
-                draw_string(knobs[numVolKnobs][knobTextX],topBoxY - (numVolKnobs*knobDiameter) - ((numVolKnobs+1)*gapFive),"haze",239/255,219/255,172/255)
-                draw_string(knobs[numVolKnobs][knobTextX]+fixedTextSpace-15,topBoxY - (numVolKnobs*knobDiameter) - ((numVolKnobs+1)*gapFive),str,239/255,219/255,172/255)
             end
 
             bFirstDraw = false
@@ -360,7 +352,7 @@ function B2VolumeControl_onMouseWheel()
     -- eat MOUSE_WHEEL if within our box
     if (MOUSE_X >= (mainX - knobDiameter - fixedTextSpace) and 
         MOUSE_X <= mainX and 
-        MOUSE_Y >= (mainY - (4*gapFive) - (numVolKnobs*knobDiameter) - hazeHeight - ((numVolKnobs+1)*gapFive)) and 
+        MOUSE_Y >= (mainY - (4*gapFive) - (numVolKnobs*knobDiameter) - ((numVolKnobs+1)*gapFive)) and 
         MOUSE_Y <= (mainY - (4*gapFive))) then
         RESUME_MOUSE_WHEEL = true
     end
@@ -370,17 +362,6 @@ function B2VolumeControl_onMouseWheel()
             MOUSE_Y >= (knobs[i][knobY]-knobRadius) and MOUSE_Y <= (knobs[i][knobY]+knobRadius)) then
             B2VolumeControl_SetVolume(i,B2VolumeControl_GetVolume(i)+(MOUSE_WHEEL_CLICKS*0.02))
             if not(knobs[i][knobExt] == knobFailedTest) then bSaveRequired = true end   -- unchangeable knob
-            return
-        end
-    end
-
-    -- do haze scroll
-    if (bHazeControl == true) then
-        if (MOUSE_X >= (knobs[numVolKnobs][knobX]-knobRadius-fixedTextSpace) and MOUSE_X <= (knobs[numVolKnobs][knobX]+knobRadius) and
-            MOUSE_Y >= (knobs[numVolKnobs][knobY]-(knobRadius+(gapFive*2)+hazeHeight)) and MOUSE_Y <= (knobs[numVolKnobs][knobY]-(knobRadius+(gapFive*0.5)))) then
-            local prev = b2vc_haze
-            local step = math.max(0.1,0.1 * (10 ^ math.max(0,math.log10(prev))))
-            b2vc_haze = math.min(65535,math.max(0,prev+(MOUSE_WHEEL_CLICKS*(step))))
             return
         end
     end
@@ -454,7 +435,10 @@ function B2VolumeControl_OpenParseConfig()
     local fileName = nil
     
     for i in string.gmatch(tmpStr,"%s*(.-)\n") do
-        if (fileVersion == nil) then _,_,fileVersion = string.find(i, "VERSION%s+(%d+)") end
+        if (fileVersion == nil) then 
+            _,_,fileVersion = string.find(i, "VERSION%s+(%d+)")
+            if (fileVersion) then fileVersion = tonumber(fileVersion) end
+        end
         if (fileX == nil and fileY == nil) then 
             _,_,fileX,fileY = string.find(i, "X:%s*(%d+)%s+Y:%s*(%d+)")
             if (fileX and fileY) then
@@ -486,17 +470,27 @@ function B2VolumeControl_OpenParseConfig()
                             B2VolumeControl_SetVolume(knobNum,knobs[knobNum][knobExt])
                         end
                         knobNum = knobNum + 1
+                        if (knobNum == 4 and fileVersion and fileVersion == 1) then
+                            knobs[knobNum][knobInt] = 1.0
+                            knobs[knobNum][knobExt] = -1.0
+                            B2VolumeControl_SetVolume(knobNum,1.0)
+                            knobNum = knobNum + 1
+                        end
+
                     end
                 end
             end
         end
     end
-    if (fileName) then bSaveRequired = false end    -- loaded this acf from file, so no need to require save
+    if (fileName and fileVersion and fileVersion > 1) then 
+        bSaveRequired = false -- loaded this acf from file, and not old version(1) so no need to require save
+    end
 end
 
 function B2VolumeControl_SaveModifiedConfig()
     local oldStr = nil  -- where we'll store all the data from the previous config file
     local newStr = nil  -- where we'll store all the data to write to the config file
+    local fileVersion = nil  -- oldStr fileVersion, in case we need to convert old->new format
 
     local configFile = io.open(SCRIPT_DIRECTORY .. "B2VolumeControl.dat","r")
     if (configFile) then
@@ -522,11 +516,32 @@ function B2VolumeControl_SaveModifiedConfig()
     -- if oldStr, we need to duplicate all the acf data that isn't our current acf
     if (oldStr) then
         for i in string.gmatch(oldStr,"%s*(.-)\n") do
+            if (fileVersion == nil) then 
+                _,_,fileVersion = string.find(i, "VERSION%s+(%d+)")
+                if (fileVersion) then fileVersion = tonumber(fileVersion) end
+            end
+
             -- look at each line for an acf file entry, then, if that
             -- entry doesn't match the loaded acf, write its data
-            local start,_,lFileName = string.find(i, "^(.+%.acf)[%s+].+$")
+            local start,_,lFileName,lData = string.find(i, "^(.+%.acf)[%s+](.+)")
             if (start and not(lFileName == AIRCRAFT_FILENAME)) then
-                newStr = string.format(newStr .. i .. "\n")
+                if (fileVersion and fileVersion == 1) then
+                    -- we'll need to convert each acf entry from ver=1 to current
+                    local knobNum = 1
+                    newStr = string.format(newStr .. lFileName)
+                    for lInt,lExt in string.gmatch(lData,"%s-(%d%.%d+)%s+(%-?%d%.%d+)") do 
+                        newStr = string.format("%s %f %f",newStr,lInt,lExt)
+                        knobNum = knobNum + 1
+                        if (knobNum == 4) then
+                            -- create dummy entry for new 'pilot' knob
+                            newStr = string.format(newStr .. " 1.000000 -1.000000")
+                            knobNum = knobNum + 1
+                        end
+                    end
+                newStr = string.format(newStr .. "\n")
+                else
+                    newStr = string.format(newStr .. i .. "\n")
+                end
             end
         end
     end
@@ -543,11 +558,11 @@ function B2VolumeControl_GetVolume(i)
     if (i == 1) then return b2vc_mastervolume end
     if (i == 2) then return b2vc_exteriorVolume end
     if (i == 3) then return b2vc_interiorVolume end
-    if (i == 4) then return b2vc_copilotVolume end
-    if (i == 4) then return b2vc_copilotVolume end
-    if (i == 5) then return b2vc_radioVolume end
-    if (i == 6) then return b2vc_enviroVolume end
-    if (i == 7) then return b2vc_uiVolume end
+    if (i == 4) then return b2vc_pilotVolume end
+    if (i == 5) then return b2vc_copilotVolume end
+    if (i == 6) then return b2vc_radioVolume end
+    if (i == 7) then return b2vc_enviroVolume end
+    if (i == 8) then return b2vc_uiVolume end
 
     return 0
 end
@@ -558,9 +573,10 @@ function B2VolumeControl_SetVolume(i,value)
     if (i == 1) then b2vc_mastervolume = value end
     if (i == 2) then b2vc_exteriorVolume = value end
     if (i == 3) then b2vc_interiorVolume = value end
-    if (i == 4) then b2vc_copilotVolume = value end
-    if (i == 5) then b2vc_radioVolume = value end
-    if (i == 6) then b2vc_enviroVolume = value end
-    if (i == 7) then b2vc_uiVolume = value end
+    if (i == 4) then b2vc_pilotVolume = value end
+    if (i == 5) then b2vc_copilotVolume = value end
+    if (i == 6) then b2vc_radioVolume = value end
+    if (i == 7) then b2vc_enviroVolume = value end
+    if (i == 8) then b2vc_uiVolume = value end
 end
 -- eof
